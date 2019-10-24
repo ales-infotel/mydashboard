@@ -334,7 +334,7 @@ class PluginMydashboardWidget extends CommonDBTM {
                   }
                   $rand                  = mt_rand();
                   $languages             = json_encode($menu->getJsLanguages("datatables"));
-                  $display_count_on_home = intval($_SESSION['glpidisplay_count_on_home']);
+//                  $display_count_on_home = intval($_SESSION['glpidisplay_count_on_home']);
 
                   $lengthMenulangs = [ __('5 rows', 'mydashboard'),
                                        __('10 rows', 'mydashboard'),
@@ -385,7 +385,6 @@ class PluginMydashboardWidget extends CommonDBTM {
                                     }
                                 })
                                },
-                               'pageLength' : $display_count_on_home,
                                'order': $order,
                                'colReorder': true,
                                'columnDefs' :$defs,
@@ -672,7 +671,6 @@ class PluginMydashboardWidget extends CommonDBTM {
                //               $display .= "<p class=\"count-text \">";
 
                $display .= "</br>";
-               $color   = "steelblue";
 
                //               $types = ['Computer', 'Monitor','Peripheral','Phone','Printer','SoftwareLicense','PluginBadgesBadge'];
                if ($itemtype == 'Computer') {
@@ -695,7 +693,7 @@ class PluginMydashboardWidget extends CommonDBTM {
                }
 
 
-               $display .= "<i style='color:$color' class=\"$icon md-fa-2x fa-border\"></i>";
+               $display .= "<i class=\"$icon md-fa-2x fa-border\"></i>";
                $display .= "</br>";
                $display .= $item_datas['name'];
                if ($item->canView()) {
