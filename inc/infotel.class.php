@@ -125,14 +125,32 @@ class PluginMydashboardInfotel extends CommonGLPI {
       $nbdays     = date("t", mktime(0, 0, 0, $month, 1, $year));
       $is_deleted = "`glpi_tickets`.`is_deleted` = 0";
 
-      $query   = "SELECT COUNT(*) as count,`glpi_tickets`.`entities_id` FROM `glpi_tickets`
+//      $query   = "SELECT COUNT(*) as count,`glpi_tickets`.`entities_id` FROM `glpi_tickets`
+//                  WHERE $is_deleted AND (((`glpi_tickets`.`date` <= '$year-$month-$nbdays 23:59:59')
+//                  AND `status` NOT IN (" . CommonITILObject::SOLVED . "," . CommonITILObject::CLOSED . "))) GROUP BY `glpi_tickets`.`entities_id`";
+//      $results = $DB->query($query);
+//      while ($data = $DB->fetch_array($results)) {
+//         $query = "INSERT INTO `glpi_plugin_mydashboard_stocktickets` (`id`,`date`,`nbstocktickets`,`entities_id`)
+//                  VALUES (NULL,'$year-$month-$nbdays'," . $data['count'] . "," . $data['entities_id'] . ")";
+//         $DB->query($query);
+//      }
+
+      $query   = "SELECT COUNT(*) as count,`glpi_tickets`.`entities_id`,`glpi_groups_tickets`.`groups_id` FROM `glpi_tickets`
+                 LEFT JOIN `glpi_groups_tickets` ON `glpi_groups_tickets`.`tickets_id`=`glpi_tickets`.`id`
                   WHERE $is_deleted AND (((`glpi_tickets`.`date` <= '$year-$month-$nbdays 23:59:59') 
                   AND `status` NOT IN (" . CommonITILObject::SOLVED . "," . CommonITILObject::CLOSED . "))) GROUP BY `glpi_tickets`.`entities_id`";
       $results = $DB->query($query);
       while ($data = $DB->fetch_array($results)) {
-         $query = "INSERT INTO `glpi_plugin_mydashboard_stocktickets` (`id`,`date`,`nbstocktickets`,`entities_id`) 
-                  VALUES (NULL,'$year-$month-$nbdays'," . $data['count'] . "," . $data['entities_id'] . ")";
-         $DB->query($query);
+         $groups_id = $data["groups_id"];
+         if(!empty($groups_id)) {
+            $query = "INSERT INTO `glpi_plugin_mydashboard_stocktickets` (`id`,`date`,`nbstocktickets`,`entities_id`,`groups_id`) 
+                     VALUES (NULL,'$year-$month-$nbdays'," . $data['count'] . "," . $data['entities_id'] . ",".$data['groups_id'].")";
+            $DB->query($query);
+         }else{
+            $query = "INSERT INTO `glpi_plugin_mydashboard_stocktickets` (`id`,`date`,`nbstocktickets`,`entities_id`,`groups_id`) 
+                     VALUES (NULL,'$year-$month-$nbdays'," . $data['count'] . "," . $data['entities_id'] . ",0)";
+            $DB->query($query);
+         }
       }
    }
 
@@ -2105,6 +2123,7 @@ class PluginMydashboardInfotel extends CommonGLPI {
             $entities_criteria          = $crit['entities_id'];
             $requester_groups_criteria  = $crit['requesters_groups_id'];
             $technician_groups_criteria = $crit['technicians_groups_id'];
+            $technician_groups_ids = is_array($opt['technicians_groups_id'])?$opt['technicians_groups_id']:[$opt['technicians_groups_id']];
             $mdentities                 = self::getSpecificEntityRestrict("glpi_plugin_mydashboard_stocktickets", $opt);
 
             $ticket_users_join   = "";
@@ -2126,13 +2145,14 @@ class PluginMydashboardInfotel extends CommonGLPI {
             }
             $currentmonth = date("m");
 
+            $tech_groups_crit = " AND `groups_id` IN (" . implode(",", $technician_groups_ids) . ")";
             $query_stockTickets =
                "SELECT DATE_FORMAT(`glpi_plugin_mydashboard_stocktickets`.`date`, '%Y-%m') as month," .
                " DATE_FORMAT(`glpi_plugin_mydashboard_stocktickets`.`date`, '%b %Y') as monthname," .
                " SUM(nbStockTickets) as nbStockTickets" .
                " FROM `glpi_plugin_mydashboard_stocktickets`" .
                " WHERE `glpi_plugin_mydashboard_stocktickets`.`date` between '$currentyear-01-01' AND ADDDATE('$currentyear-01-01', INTERVAL 1 YEAR)" .
-               " " . $mdentities .
+               " " . $mdentities . $tech_groups_crit.
                " GROUP BY DATE_FORMAT(`glpi_plugin_mydashboard_stocktickets`.`date`, '%Y-%m')";
 
             $resultsStockTickets = $DB->query($query_stockTickets);
@@ -2141,6 +2161,7 @@ class PluginMydashboardInfotel extends CommonGLPI {
             $i                   = 0;
             $tabopened           = [];
             $tabclosed           = [];
+            $tabsolved           = [];
             $tabprogress         = [];
             $tabnames            = [];
             if ($nbStockTickets) {
@@ -2223,6 +2244,29 @@ class PluginMydashboardInfotel extends CommonGLPI {
                   } else {
                      $tabclosed[] = 0;
                   }
+                  $solvedate_criteria = " `glpi_tickets`.`solvedate` between '$year-$month-01' AND ADDDATE('$year-$month-01', INTERVAL 1 MONTH)";
+
+                  $query_4 =
+                     "SELECT COUNT(*) as count FROM `glpi_tickets`" .
+                     " $ticket_users_join" .
+                     " WHERE $solvedate_criteria" .
+                     " $technician_criteria" .
+                     " $entities_criteria" .
+                     " $requester_groups_criteria" .
+                     " $technician_groups_criteria" .
+                     " $locations_criteria" .
+                     " AND $is_deleted";
+
+                  $results_4 = $DB->query($query_4);
+
+                  if ($DB->numrows($results_4)) {
+                     $data_4      = $DB->fetch_array($results_4);
+                     $tabsolved[] = $data_4['count'];
+                  } else {
+                     $tabsolved[] = 0;
+                  }
+
+
 
                   if ($month == date("m") && $year == date("Y")) {
 
@@ -2264,9 +2308,11 @@ class PluginMydashboardInfotel extends CommonGLPI {
             $widget->toggleWidgetRefresh();
 
             $titleopened         = __("Opened tickets", "mydashboard");
-            $titlesolved         = __("Closed tickets", "mydashboard");
+            $titleclosed         = __("Closed tickets", "mydashboard");
+			   $titlesolved         = __("Solved tickets", "mydashboard");
             $titleprogress       = __("Opened tickets backlog", "mydashboard");
             $dataopenedBarset    = json_encode($tabopened);
+            $datasolvedBarset    = json_encode($tabsolved);
             $dataclosedBarset    = json_encode($tabclosed);
             $dataprogressLineset = json_encode($tabprogress);
             $labels              = json_encode($tabnames);
@@ -2286,11 +2332,19 @@ class PluginMydashboardInfotel extends CommonGLPI {
                       data: $dataopenedBarset,
                       label: '$titleopened',
                       backgroundColor: '#1f77b4',
+                      stack: 1
                     }, {
                       type: 'bar',
                       data: $dataclosedBarset,
-                      label: '$titlesolved',
+                      label: '$titleclosed',
                       backgroundColor: '#aec7e8',
+                      stack: 2
+                    },{
+                      type: 'bar',
+                      data: $datasolvedBarset,
+                      label: '$titlesolved',
+                      backgroundColor: '#009900',
+                      stack: 3
                     }],
                   labels:
                   $labels
@@ -2306,7 +2360,9 @@ class PluginMydashboardInfotel extends CommonGLPI {
                    var TicketStatusBarLineChart = new Chart(ctx, {
                          type: 'bar',
                          data: dataTicketStatusBar,
+        
                          options: {
+                                              
                              responsive:true,
                              maintainAspectRatio: true,
                              title:{
